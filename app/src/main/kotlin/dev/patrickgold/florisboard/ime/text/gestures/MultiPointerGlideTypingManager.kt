@@ -40,7 +40,7 @@ import kotlinx.coroutines.withContext
  * 3.Taps act as "anchors" for important letters
  * 4.Supports hybrid tap+swipe within single word
  */
-class MultiPointerGlideTypingManager(context:Context) :
+class MultiPointerGlideTypingManager(context: Context) : 
     GlideTypingGesture.Listener,
     MultiPointerGlideDetector.Listener {
 
@@ -55,34 +55,28 @@ class MultiPointerGlideTypingManager(context:Context) :
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    // Classifier for gesture recognition
     private val glideTypingClassifier = StatisticalGlideTypingClassifier(context)
 
-    // Current gesture state
     private var isMultiPointerGesture = false
-    private var pendingWord:String? = null
-    private var currentKeys:List<TextKey> = emptyList()
-    private var keysByCharacter:SparseArrayCompat<TextKey> = SparseArrayCompat()
+    private var pendingWord:  String? = null
+    private var currentKeys: List<TextKey> = emptyList()
+    private var keysByCharacter:  SparseArrayCompat<TextKey> = SparseArrayCompat()
 
-    // Track key sequence from multi-pointer gestures
     private val keySequence = mutableListOf<KeyHit>()
 
-    // Preview timing
     private var lastPreviewTime = System.currentTimeMillis()
 
     data class KeyHit(
-        val keyCode:Int,
-        val character: Char,
-        val timestamp:Long,
-        val pointerId: Int
+        val keyCode: Int,
+        val character:  Char,
+        val timestamp: Long,
+        val pointerId:  Int
     )
 
     // ==================== Single Pointer Callbacks ====================
 
-    override fun onGlideComplete(data:GlideTypingGesture.Detector.PointerData) {
+    override fun onGlideComplete(data: GlideTypingGesture.Detector.PointerData) {
         if (! isMultiPointerGesture) {
-            // Standard single-finger behavior - but don't commit yet! 
-            // Store the word and wait for space
             updateSuggestionsAsync(MAX_SUGGESTION_COUNT, commitWord = false) {
                 glideTypingClassifier.clear()
             }
@@ -96,7 +90,7 @@ class MultiPointerGlideTypingManager(context:Context) :
         isMultiPointerGesture = false
     }
 
-    override fun onGlideAddPoint(point:GlideTypingGesture.Detector.Position) {
+    override fun onGlideAddPoint(point: GlideTypingGesture.Detector.Position) {
         if (! isMultiPointerGesture) {
             glideTypingClassifier.addGesturePoint(point)
             maybeUpdatePreview()
@@ -105,29 +99,25 @@ class MultiPointerGlideTypingManager(context:Context) :
 
     // ==================== Multi Pointer Callbacks ====================
 
-    override fun onMultiGlideStart(pointerId: Int) {
+    override fun onMultiGlideStart(pointerId:  Int) {
         isMultiPointerGesture = true
-        // Clear single pointer data as we're now in multi-pointer mode
         glideTypingClassifier.clear()
         keySequence.clear()
     }
 
     override fun onMultiGlideAddPoint(
-        pointerId:Int,
-        position: GlideTypingGesture.Detector.Position,
-        key:TextKey?
+        pointerId: Int,
+        position:  GlideTypingGesture.Detector.Position,
+        key: TextKey?
     ) {
-        // Add point to the classifier
         glideTypingClassifier.addGesturePoint(position)
 
-        // Track key hits for multi-pointer analysis
         if (key != null) {
             val keyData = key.computedData
             if (keyData is KeyData) {
                 val code = keyData.code
                 val char = code.toChar()
                 if (char.isLetter()) {
-                    // Only add if different from last key (avoid duplicates from movement)
                     if (keySequence.isEmpty() || keySequence.last().keyCode != code) {
                         keySequence.add(KeyHit(
                             keyCode = code,
@@ -143,8 +133,7 @@ class MultiPointerGlideTypingManager(context:Context) :
         maybeUpdatePreview()
     }
 
-    override fun onMultiGlideComplete(data:MultiPointerGlideDetector.MultiPointerGestureData) {
-        // Use the standard classifier for now, enhanced with key sequence info
+    override fun onMultiGlideComplete(data: MultiPointerGlideDetector.MultiPointerGestureData) {
         updateSuggestionsAsync(MAX_SUGGESTION_COUNT, commitWord = false) {
             glideTypingClassifier.clear()
             keySequence.clear()
@@ -158,37 +147,24 @@ class MultiPointerGlideTypingManager(context:Context) :
 
     // ==================== Word Commitment ====================
 
-    /**
-     * Called when SPACE is pressed. Commits the pending word.
-     * This is the key difference from standard glide typing! 
-     */
-    fun commitPendingWord():Boolean {
-        val word = pendingWord ?:return false
+    fun commitPendingWord(): Boolean {
+        val word = pendingWord ?: return false
         keyboardManager.commitGesture(word)
         pendingWord = null
         return true
     }
 
-    /**
-     * Check if there's a pending word waiting to be committed.
-     */
-    fun hasPendingWord():Boolean = pendingWord != null
+    fun hasPendingWord(): Boolean = pendingWord != null
 
-    /**
-     * Get the current pending word (for display purposes).
-     */
-    fun getPendingWord():String? = pendingWord
+    fun getPendingWord(): String? = pendingWord
 
-    /**
-     * Clear pending word without committing.
-     */
     fun clearPendingWord() {
         pendingWord = null
     }
 
     // ==================== Layout Management ====================
 
-    fun setLayout(keys:List<TextKey>) {
+    fun setLayout(keys: List<TextKey>) {
         if (keys.isNotEmpty()) {
             currentKeys = keys
             keysByCharacter.clear()
@@ -213,9 +189,9 @@ class MultiPointerGlideTypingManager(context:Context) :
     }
 
     private fun updateSuggestionsAsync(
-        maxSuggestions:Int,
-        commitWord:Boolean,
-        callback:(Boolean) -> Unit
+        maxSuggestions: Int,
+        commitWord: Boolean,
+        callback: (Boolean) -> Unit
     ) {
         if (! glideTypingClassifier.ready) {
             callback(false)
@@ -227,10 +203,8 @@ class MultiPointerGlideTypingManager(context:Context) :
 
             withContext(Dispatchers.Main) {
                 if (suggestions.isNotEmpty()) {
-                    // Store top suggestion as pending
                     pendingWord = keyboardManager.fixCase(suggestions.first())
 
-                    // Build suggestion list for smartbar (excluding top which is pending)
                     val startIndex = 1
                     val suggestionList = suggestions
                         .subList(startIndex.coerceAtMost(suggestions.size), maxSuggestions.coerceAtMost(suggestions.size))
@@ -244,5 +218,5 @@ class MultiPointerGlideTypingManager(context:Context) :
         }
     }
 
-    val ready:Boolean get() = glideTypingClassifier.ready
+    val ready: Boolean get() = glideTypingClassifier.ready
 }
