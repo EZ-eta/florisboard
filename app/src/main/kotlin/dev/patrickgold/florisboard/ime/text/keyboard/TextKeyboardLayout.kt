@@ -85,6 +85,8 @@ import dev.patrickgold.florisboard.lib.devtools.flogDebug
 import dev.patrickgold.florisboard.lib.observeAsTransformingState
 import dev.patrickgold.florisboard.lib.toIntOffset
 import dev.patrickgold.jetpref.datastore.model.observeAsState
+import dev. patrickgold. florisboard.ime.text.gestures.MultiPointerGlideDetector
+import dev. patrickgold. florisboard.ime.text.gestures.MultiPointerGlideTypingManager
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.isActive
@@ -140,11 +142,18 @@ fun TextKeyboardLayout(
     }
 
     DisposableEffect(Unit) {
-        controller.glideTypingDetector.registerListener(controller)
+        controller. glideTypingDetector. registerListener(controller)
         controller.glideTypingDetector.registerListener(glideTypingManager)
+        
+        // Register multi-pointer listeners
+        val multiPointerManager = MultiPointerGlideTypingManager(context)
+        controller.setMultiPointerGlideManager(multiPointerManager)
+        controller.multiPointerGlideDetector. registerListener(multiPointerManager)
+        
         onDispose {
-            controller.glideTypingDetector.unregisterListener(controller)
-            controller.glideTypingDetector.unregisterListener(glideTypingManager)
+            controller. glideTypingDetector.unregisterListener(controller)
+            controller.glideTypingDetector. unregisterListener(glideTypingManager)
+            controller. multiPointerGlideDetector.unregisterListener(multiPointerManager)
             resetAllKeys()
         }
     }
@@ -390,7 +399,12 @@ private class TextKeyboardLayoutController(
     private val prefs by FlorisPreferenceStore
     private val editorInstance by context.editorInstance()
     private val keyboardManager by context.keyboardManager()
-
+    val multiPointerGlideDetector = MultiPointerGlideDetector(context)
+    private var multiPointerGlideManager: MultiPointerGlideTypingManager? = null
+    
+    fun setMultiPointerGlideManager(manager: MultiPointerGlideTypingManager) {
+        multiPointerGlideManager = manager
+    }
     private val inputEventDispatcher get() = keyboardManager.inputEventDispatcher
     private val inputFeedbackController get() = FlorisImeService.inputFeedbackController()
     private val keyHintConfiguration = prefs.keyboard.keyHintConfiguration()
@@ -416,16 +430,34 @@ private class TextKeyboardLayoutController(
     fun onTouchEventInternal(event: MotionEvent) {
         flogDebug { "event=$event" }
         swipeGestureDetector.onTouchEvent(event)
+        
+        // Check for multi-pointer glide first
         if (isGlideEnabled && keyboard.mode == KeyboardMode.CHARACTERS) {
-            val glidePointer = pointerMap.findById(0)
-            val isNotBlocked = glidePointer?.hasTriggeredLongPress != true
-            if (isNotBlocked && glideTypingDetector.onTouchEvent(event, glidePointer?.initialKey)) {
+            // Try multi-pointer detection
+            if (multiPointerGlideDetector.onTouchEvent(event) { x, y -> keyboard.getKeyForPos(x, y) }) {
+                // Multi-pointer gesture is active
                 for (pointer in pointerMap) {
                     if (pointer.activeKey != null) {
                         onTouchCancelInternal(event, pointer)
                     }
                 }
                 if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    pointerMap.clear()
+                }
+                isGliding = true
+                return
+            }
+            
+            // Fall back to single-pointer glide detection
+            val glidePointer = pointerMap. findById(0)
+            val isNotBlocked = glidePointer?. hasTriggeredLongPress != true
+            if (isNotBlocked && glideTypingDetector.onTouchEvent(event, glidePointer?. initialKey)) {
+                for (pointer in pointerMap) {
+                    if (pointer. activeKey != null) {
+                        onTouchCancelInternal(event, pointer)
+                    }
+                }
+                if (event.actionMasked == MotionEvent.ACTION_UP || event. actionMasked == MotionEvent. ACTION_CANCEL) {
                     pointerMap.clear()
                 }
                 isGliding = true
