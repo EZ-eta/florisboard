@@ -29,42 +29,40 @@ import kotlin.math.sqrt
  * Multi-pointer gesture detector for Nintype-style two-thumb sliding.
  * Tracks up to 2 simultaneous gesture paths and merges them into word candidates.
  */
-class MultiPointerGlideDetector(context:Context) {
+class MultiPointerGlideDetector(context: Context) {
 
     companion object {
         private const val MAX_POINTERS = 2
         private const val MAX_DETECT_TIME = 500
-        private const val VELOCITY_THRESHOLD = 0.10 // dp per ms
+        private const val VELOCITY_THRESHOLD = 0.10
         private val SWIPE_GESTURE_KEYS = arrayOf(KeyCode.DELETE, KeyCode.SHIFT, KeyCode.SPACE, KeyCode.CJK_SPACE)
     }
 
     private val keySize = ViewUtils.px2dp(context.resources.getDimension(R.dimen.key_width))
     private val listeners = arrayListOf<Listener>()
 
-    // Track multiple pointers independently
     private val pointerDataMap = mutableMapOf<Int, PointerData>()
     private val activePointerIds = mutableListOf<Int>()
 
-    // Merged gesture data combining both pointer paths
     private var mergedGesturePoints = mutableListOf<TimestampedPoint>()
     private var isMultiPointerMode = false
     private var gestureActive = false
 
     data class TimestampedPoint(
-        val xFloat,
-        val yFloat,
-        val timestamp Long,
-        val pointerId:Int
+        val x: Float,
+        val y: Float,
+        val timestamp:  Long,
+        val pointerId: Int
     )
 
     data class PointerData(
-        val positions:MutableList<TimestampedPoint> = mutableListOf(),
-        var startTime:Long = 0,
-        var isActuallyGesture:Boolean?  = null,
-        var lastKey:TextKey? = null
+        val positions: MutableList<TimestampedPoint> = mutableListOf(),
+        var startTime: Long = 0,
+        var isActuallyGesture: Boolean?  = null,
+        var lastKey: TextKey? = null
     )
 
-    fun onTouchEvent(event:MotionEvent, getKeyForPos:(Float, Float) -> TextKey?):Boolean {
+    fun onTouchEvent(event: MotionEvent, getKeyForPos: (Float, Float) -> TextKey?): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 resetState()
@@ -81,7 +79,6 @@ class MultiPointerGlideDetector(context:Context) {
                 handlePointerMove(event, getKeyForPos)
             }
             MotionEvent.ACTION_POINTER_UP -> {
-                // Don't complete gesture yet - wait for all pointers to lift
                 val pointerIndex = event.actionIndex
                 val pointerId = event.getPointerId(pointerIndex)
                 pointerDataMap[pointerId]?.let { data ->
@@ -101,7 +98,7 @@ class MultiPointerGlideDetector(context:Context) {
         return gestureActive
     }
 
-    private fun handlePointerDown(event:MotionEvent, pointerIndex:Int, getKeyForPos: (Float, Float) -> TextKey?) {
+    private fun handlePointerDown(event: MotionEvent, pointerIndex:  Int, getKeyForPos: (Float, Float) -> TextKey?) {
         val pointerId = event.getPointerId(pointerIndex)
         val x = event.getX(pointerIndex)
         val y = event.getY(pointerIndex)
@@ -109,7 +106,6 @@ class MultiPointerGlideDetector(context:Context) {
 
         val initialKey = getKeyForPos(x, y)
 
-        // Don't start gesture on special keys
         if (initialKey != null && SWIPE_GESTURE_KEYS.contains(initialKey.computedData.code)) {
             return
         }
@@ -123,14 +119,13 @@ class MultiPointerGlideDetector(context:Context) {
         pointerDataMap[pointerId] = pointerData
         activePointerIds.add(pointerId)
 
-        // Add to merged gesture
         mergedGesturePoints.add(TimestampedPoint(x, y, timestamp, pointerId))
     }
 
-    private fun handlePointerMove(event:MotionEvent, getKeyForPos:(Float, Float) -> TextKey?) {
+    private fun handlePointerMove(event: MotionEvent, getKeyForPos: (Float, Float) -> TextKey?) {
         for (i in 0 until event.pointerCount) {
             val pointerId = event.getPointerId(i)
-            val pointerData = pointerDataMap[pointerId] ?:continue
+            val pointerData = pointerDataMap[pointerId] ?: continue
 
             val x = event.getX(i)
             val y = event.getY(i)
@@ -140,7 +135,6 @@ class MultiPointerGlideDetector(context:Context) {
             pointerData.positions.add(point)
             mergedGesturePoints.add(point)
 
-            // Check if this is actually a gesture (velocity check)
             if (pointerData.isActuallyGesture == null && pointerData.positions.size > 1) {
                 val elapsed = timestamp - pointerData.startTime
                 if (elapsed > 0 && elapsed < MAX_DETECT_TIME) {
@@ -156,7 +150,6 @@ class MultiPointerGlideDetector(context:Context) {
                 }
             }
 
-            // Notify listeners of new point
             if (pointerData.isActuallyGesture == true) {
                 val currentKey = getKeyForPos(x, y)
                 listeners.forEach {
@@ -171,11 +164,10 @@ class MultiPointerGlideDetector(context:Context) {
         }
     }
 
-    private fun handleGestureComplete():Boolean {
+    private fun handleGestureComplete(): Boolean {
         val hasValidGesture = pointerDataMap.values.any { it.isActuallyGesture == true }
 
         if (hasValidGesture) {
-            // Sort merged points by timestamp to get proper sequence
             val sortedPoints = mergedGesturePoints.sortedBy { it.timestamp }
 
             val multiPointerData = MultiPointerGestureData(
@@ -192,12 +184,12 @@ class MultiPointerGlideDetector(context:Context) {
         return wasActive || hasValidGesture
     }
 
-    private fun calculateDistance(positions:List<TimestampedPoint>):Float {
+    private fun calculateDistance(positions: List<TimestampedPoint>): Float {
         if (positions.size < 2) return 0f
         var totalDistance = 0f
         for (i in 1 until positions.size) {
-            val dx = positions[i].x - positions[i-1].x
-            val dy = positions[i].y - positions[i-1].y
+            val dx = positions[i].x - positions[i - 1].x
+            val dy = positions[i].y - positions[i - 1].y
             totalDistance += sqrt(dx.pow(2) + dy.pow(2))
         }
         return ViewUtils.px2dp(totalDistance)
@@ -211,24 +203,24 @@ class MultiPointerGlideDetector(context:Context) {
         gestureActive = false
     }
 
-    fun registerListener(listener: Listener) {
+    fun registerListener(listener:  Listener) {
         listeners.add(listener)
     }
 
-    fun unregisterListener(listener: Listener) {
+    fun unregisterListener(listener:  Listener) {
         listeners.remove(listener)
     }
 
     data class MultiPointerGestureData(
-        val pointerData:Map<Int, PointerData>,
-        val mergedPoints:List<TimestampedPoint>,
-        val isMultiPointer:Boolean
+        val pointerData: Map<Int, PointerData>,
+        val mergedPoints: List<TimestampedPoint>,
+        val isMultiPointer: Boolean
     )
 
     interface Listener {
-        fun onMultiGlideStart(pointerId:Int)
-        fun onMultiGlideAddPoint(pointerId: Int, position:GlideTypingGesture.Detector.Position, key:TextKey?)
-        fun onMultiGlideComplete(data:MultiPointerGestureData)
+        fun onMultiGlideStart(pointerId: Int)
+        fun onMultiGlideAddPoint(pointerId:  Int, position: GlideTypingGesture.Detector.Position, key: TextKey?)
+        fun onMultiGlideComplete(data: MultiPointerGestureData)
         fun onMultiGlideCancelled()
     }
 }
